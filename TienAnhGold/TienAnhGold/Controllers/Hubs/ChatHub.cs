@@ -32,6 +32,10 @@ namespace TienAnhGold.Hubs
                     return;
                 }
 
+                // Kiểm tra xem đây có phải là tin nhắn đầu tiên từ User không
+                bool isFirstMessage = senderRole == "User" && !await _context.ChatMessages.AnyAsync(m => m.ChatId == int.Parse(chatId));
+
+                // Lưu tin nhắn của người gửi (User)
                 var chatMessage = new ChatMessage
                 {
                     ChatId = int.Parse(chatId),
@@ -46,7 +50,28 @@ namespace TienAnhGold.Hubs
 
                 await NotifyUnreadCount(chatId, senderId, senderRole);
 
+                // Gửi tin nhắn của User tới nhóm chat
                 await Clients.Group(chatId).SendAsync("ReceiveMessage", senderId, senderRole, message);
+
+                // Nếu là tin nhắn đầu tiên từ User, lưu và gửi tin nhắn hệ thống
+                if (isFirstMessage)
+                {
+                    string systemMessage = "Cảm ơn bạn đã gửi tin nhắn. Bộ phận hỗ trợ của chúng tôi sẽ đến giúp bạn trong ít phút. Bạn cần hỗ trợ về điều gì? Hãy nói rõ cụ thể để bộ phận hỗ trợ đến và làm việc thật nhanh chóng, hiệu quả giúp bạn.";
+                    var systemChatMessage = new ChatMessage
+                    {
+                        ChatId = int.Parse(chatId),
+                        SenderId = "Hệ thống",
+                        SenderRole = "System",
+                        Message = systemMessage,
+                        SentAt = DateTime.Now,
+                        IsRead = false
+                    };
+                    _context.ChatMessages.Add(systemChatMessage);
+                    await _context.SaveChangesAsync();
+
+                    // Gửi tin nhắn hệ thống tới nhóm chat
+                    await Clients.Group(chatId).SendAsync("ReceiveSystemMessage", "Hệ thống", "System", systemMessage);
+                }
             }
             catch (Exception ex)
             {
@@ -74,7 +99,7 @@ namespace TienAnhGold.Hubs
 
                 Console.WriteLine($"JoinChat: chatId={chatId}, userId={userId}, userRole={userRole}, IsActive={chat.IsActive}, HasAdminJoinedMessage={chat.HasAdminJoinedMessage}, UserId={chat.UserId}, EmployeeId={chat.EmployeeId}");
 
-                if (userRole == "Employee" && chat.UserId != null && !chat.HasAdminJoinedMessage)
+                if ((userRole == "Employee" || userRole == "Admin") && chat.UserId != null && !chat.HasAdminJoinedMessage)
                 {
                     var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == chat.UserId);
                     if (user != null)
@@ -83,7 +108,7 @@ namespace TienAnhGold.Hubs
                         await Clients.Group(chatId).SendAsync("ReceiveSystemMessage",
                             "Hệ thống",
                             "System",
-                            "Admin... đã hỗ trợ bạn");
+                            userRole == "Admin" ? "Admin đã hỗ trợ bạn" : "Nhân viên đã hỗ trợ bạn");
 
                         chat.HasAdminJoinedMessage = true;
                         await _context.SaveChangesAsync();
@@ -96,10 +121,10 @@ namespace TienAnhGold.Hubs
                     var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == chat.UserId);
                     if (user != null)
                     {
-                        await Clients.Group(chatId).SendAsync("ReceiveMessage",
+                        await Clients.Group(chatId).SendAsync("ReceiveSystemMessage",
                             "Hệ thống",
                             "System",
-                            $"{userId} ({userRole}) đã tham gia đoạn chat.");
+                            $"Chúng tôi đã vào và sẽ hỗ trợ cho bạn");
                     }
                 }
 
@@ -122,9 +147,7 @@ namespace TienAnhGold.Hubs
             }
         }
 
-        public async Task LeaveChat(string chatId, string userId,
-
- string userRole)
+        public async Task LeaveChat(string chatId, string userId, string userRole)
         {
             try
             {
@@ -148,12 +171,12 @@ namespace TienAnhGold.Hubs
                     if (chat.UserId == userId)
                     {
                         chat.UserEnded = true;
-                        Console.WriteLine($"Admin {userId} ended the chat: chatId={chatId}");
+                        Console.WriteLine($"Admin {userId} ended the chat as User: chatId={chatId}");
                     }
                     else if (chat.EmployeeId == userId)
                     {
                         chat.EmployeeEnded = true;
-                        Console.WriteLine($"Admin {userId} ended the chat: chatId={chatId}");
+                        Console.WriteLine($"Admin {userId} ended the chat as Employee: chatId={chatId}");
                     }
                 }
 
@@ -178,7 +201,6 @@ namespace TienAnhGold.Hubs
             }
         }
 
-        // Phương thức mới để thông báo rằng đoạn chat đã hoàn toàn kết thúc
         public async Task NotifyChatFullyEnded(string chatId)
         {
             try
@@ -199,10 +221,10 @@ namespace TienAnhGold.Hubs
                 var chat = await _context.Chats.FindAsync(int.Parse(chatId));
                 if (chat == null) return;
 
-                if (senderRole == "Employee" && chat.UserId != null)
+                if ((senderRole == "Employee" || senderRole == "Admin") && chat.UserId != null)
                 {
                     var unreadCount = await _context.ChatMessages
-                        .Where(m => m.ChatId == int.Parse(chatId) && m.SenderRole == "Employee" && !m.IsRead)
+                        .Where(m => m.ChatId == int.Parse(chatId) && (m.SenderRole == "Employee" || m.SenderRole == "Admin") && !m.IsRead)
                         .CountAsync();
                     await Clients.User(chat.UserId).SendAsync("UpdateUnreadCount", unreadCount);
                 }
@@ -216,7 +238,7 @@ namespace TienAnhGold.Hubs
                     var totalUnread = unreadUserCount.Sum(x => x.Count);
                     await Clients.User(chat.EmployeeId).SendAsync("UpdateEmployeeUnreadCount", totalUnread, unreadUserCount);
                 }
-                else if (senderRole == "Employee" && chat.EmployeeId != null)
+                else if (senderRole == "Employee" && chat.EmployeeId != null && chat.UserId != null)
                 {
                     var unreadEmployeeCount = await _context.ChatMessages
                         .Where(m => m.SenderRole == "Employee" && !m.IsRead)

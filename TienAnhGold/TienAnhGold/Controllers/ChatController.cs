@@ -153,41 +153,78 @@ namespace TienAnhGold.Controllers
 
                 if (request.Role == "Admin")
                 {
-                    existingChat = await _context.Chats
-                        .FirstOrDefaultAsync(c => ((c.UserId == request.UserId && c.EmployeeId == request.TargetId) ||
-                                                  (c.UserId == request.TargetId && c.EmployeeId == request.UserId)));
-                    if (existingChat != null)
+                    if (request.TargetRole == "Employee")
                     {
-                        if (!existingChat.IsActive)
+                        existingChat = await _context.Chats
+                            .FirstOrDefaultAsync(c => ((c.UserId == request.UserId && c.EmployeeId == request.TargetId) ||
+                                                      (c.UserId == request.TargetId && c.EmployeeId == request.UserId)));
+                        if (existingChat != null)
                         {
-                            existingChat.IsActive = true;
-                            existingChat.HasAdminJoinedMessage = false;
-                            existingChat.UserEnded = false;
-                            existingChat.EmployeeEnded = false;
-                            await _context.SaveChangesAsync();
-                            Console.WriteLine($"Reactivated chat between Admin and Employee: chatId={existingChat.Id}");
+                            if (!existingChat.IsActive)
+                            {
+                                existingChat.IsActive = true;
+                                existingChat.HasAdminJoinedMessage = false;
+                                existingChat.UserEnded = false;
+                                existingChat.EmployeeEnded = false;
+                                await _context.SaveChangesAsync();
+                                Console.WriteLine($"Reactivated chat between Admin and Employee: chatId={existingChat.Id}");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"Found existing chat between Admin and Employee: chatId={existingChat.Id}");
+                            }
+                            return Json(new { success = true, chatId = existingChat.Id });
                         }
-                        else
-                        {
-                            Console.WriteLine($"Found existing chat between Admin and Employee: chatId={existingChat.Id}");
-                        }
-                        return Json(new { success = true, chatId = existingChat.Id });
-                    }
 
-                    var newChat = new Chat
+                        var newChat = new Chat
+                        {
+                            UserId = request.UserId,
+                            EmployeeId = request.TargetId,
+                            IsActive = true,
+                            CreatedAt = DateTime.Now,
+                            HasAdminJoinedMessage = false,
+                            UserEnded = false,
+                            EmployeeEnded = false
+                        };
+                        _context.Chats.Add(newChat);
+                        await _context.SaveChangesAsync();
+                        Console.WriteLine($"Created new chat for Admin-Employee: chatId={newChat.Id}, UserId={newChat.UserId}, EmployeeId={newChat.EmployeeId}");
+                        return Json(new { success = true, chatId = newChat.Id });
+                    }
+                    else if (request.TargetRole == "User")
                     {
-                        UserId = request.UserId,
-                        EmployeeId = request.TargetId,
-                        IsActive = true,
-                        CreatedAt = DateTime.Now,
-                        HasAdminJoinedMessage = false,
-                        UserEnded = false,
-                        EmployeeEnded = false
-                    };
-                    _context.Chats.Add(newChat);
-                    await _context.SaveChangesAsync();
-                    Console.WriteLine($"Created new chat for Admin-Employee: chatId={newChat.Id}, UserId={newChat.UserId}, EmployeeId={newChat.EmployeeId}");
-                    return Json(new { success = true, chatId = newChat.Id });
+                        existingChat = await _context.Chats
+                            .FirstOrDefaultAsync(c => c.UserId == request.TargetId);
+                        if (existingChat != null)
+                        {
+                            if (string.IsNullOrEmpty(existingChat.EmployeeId))
+                            {
+                                existingChat.EmployeeId = request.UserId; // Admin đóng vai trò Employee khi nhắn với User
+                                existingChat.IsActive = true;
+                                existingChat.HasAdminJoinedMessage = false;
+                                existingChat.UserEnded = false;
+                                existingChat.EmployeeEnded = false;
+                                await _context.SaveChangesAsync();
+                                Console.WriteLine($"Updated EmployeeId and reactivated chatId={existingChat.Id}, AdminId={request.UserId}");
+                            }
+                            return Json(new { success = true, chatId = existingChat.Id });
+                        }
+
+                        var newChat = new Chat
+                        {
+                            UserId = request.TargetId,
+                            EmployeeId = request.UserId, // Admin được gán vào EmployeeId để nhắn với User
+                            IsActive = true,
+                            CreatedAt = DateTime.Now,
+                            HasAdminJoinedMessage = false,
+                            UserEnded = false,
+                            EmployeeEnded = false
+                        };
+                        _context.Chats.Add(newChat);
+                        await _context.SaveChangesAsync();
+                        Console.WriteLine($"Created new chat for Admin-User: chatId={newChat.Id}, UserId={newChat.UserId}, AdminId={newChat.EmployeeId}");
+                        return Json(new { success = true, chatId = newChat.Id });
+                    }
                 }
 
                 return Json(new { success = false, error = "Vai trò không hợp lệ." });
@@ -222,12 +259,12 @@ namespace TienAnhGold.Controllers
                     if (chat.UserId == request.UserId)
                     {
                         chat.UserEnded = true;
-                        Console.WriteLine($"Admin {request.UserId} ended the chat: chatId={request.ChatId}");
+                        Console.WriteLine($"Admin {request.UserId} ended the chat as User: chatId={request.ChatId}");
                     }
                     else if (chat.EmployeeId == request.UserId)
                     {
                         chat.EmployeeEnded = true;
-                        Console.WriteLine($"Admin {request.UserId} ended the chat: chatId={request.ChatId}");
+                        Console.WriteLine($"Admin {request.UserId} ended the chat as Employee: chatId={request.ChatId}");
                     }
                 }
 
@@ -248,7 +285,6 @@ namespace TienAnhGold.Controllers
                     await _context.SaveChangesAsync();
                     Console.WriteLine($"Deleted chat: chatId={request.ChatId}");
 
-                    // Gửi tín hiệu đến nhóm chat để thông báo rằng đoạn chat đã hoàn toàn kết thúc
                     await _hubContext.Clients.Group(request.ChatId.ToString()).SendAsync("ChatFullyEnded");
                 }
 

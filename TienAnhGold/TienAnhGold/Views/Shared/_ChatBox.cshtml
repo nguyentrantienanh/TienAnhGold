@@ -150,7 +150,7 @@
                 background-color: #c82333;
             }
 
-        .user-list, .admin-list, .employee-list {
+        .contact-list {
             position: fixed;
             bottom: 90px;
             right: 20px;
@@ -197,15 +197,11 @@
                 border-bottom: 2px solid #ffd700;
             }
 
-        .user-list-content, .admin-list-content {
-            display: none;
+        .contact-list-content {
+            padding: 10px 0;
         }
 
-            .user-list-content.active, .admin-list-content.active {
-                display: block;
-            }
-
-        .user-list-item, .admin-list-item, .employee-list-item {
+        .contact-list-item {
             padding: 15px;
             border-bottom: 1px solid #eee;
             cursor: pointer;
@@ -215,7 +211,7 @@
             transition: background-color 0.3s ease;
         }
 
-            .user-list-item:hover, .admin-list-item:hover, .employee-list-item:hover {
+            .contact-list-item:hover {
                 background-color: #f9f9f9;
             }
 
@@ -252,20 +248,13 @@
         </div>
     </div>
 
-    <!-- Danh sách cho nhân viên (User và Admin) -->
-    <div class="user-list" id="user-list">
-        <div class="list-header">Danh sách liên hệ</div>
-        <div class="list-tabs">
-            <div class="list-tab active" onclick="showTab('users')">Người dùng</div>
-            <div class="list-tab" onclick="showTab('admins')">Admin</div>
-        </div>
-        <div class="user-list-content active" id="user-list-content"></div>
-        <div class="admin-list-content" id="admin-list-content"></div>
-    </div>
-
-    <!-- Danh sách nhân viên cho quản trị viên -->
-    <div class="employee-list" id="employee-list">
-        <div class="list-header" id="employee-list-header">Danh sách nhân viên</div>
+    <!-- Danh sách liên hệ chung -->
+    <div class="contact-list" id="contact-list">
+        <div class="list-header" id="contact-list-header">Danh sách liên hệ</div>
+        <div class="list-tabs" id="contact-list-tabs"></div>
+        <div class="contact-list-content" id="users-list-content"></div>
+        <div class="contact-list-content" id="admins-list-content" style="display: none;"></div>
+        <div class="contact-list-content" id="employees-list-content" style="display: none;"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
@@ -291,8 +280,8 @@
             console.log(`Received message from ${senderId} (${senderRole}): ${message}`);
             const messagesDiv = document.getElementById("chat-messages");
 
-            if (userRole === "User" && (senderRole === "User" || senderRole === "Employee")) {
-                const messageClass = senderId === userId ? "user-message" : "employee-message";
+            if (userRole === "User" && (senderRole === "User" || senderRole === "Employee" || senderRole === "Admin")) {
+                const messageClass = senderId === userId ? "user-message" : (senderRole === "Employee" ? "employee-message" : "admin-message");
                 messagesDiv.innerHTML += `<div class="message ${messageClass}"><strong>${senderId} (${senderRole}):</strong> ${message}</div>`;
             } else if (userRole !== "User") {
                 const messageClass = senderId === userId ? "user-message" :
@@ -333,16 +322,15 @@
         });
 
         async function startConnection() {
-            try
-            {
+            try {
                 if (connection.state !== signalR.HubConnectionState.Connected) {
                     await connection.start();
                     console.log("Đã kết nối SignalR");
                     if (userRole === "Employee") {
                         loadUserList();
                         loadAdminList();
-                    }
-                    if (userRole === "Admin") {
+                    } else if (userRole === "Admin") {
+                        loadUserList();
                         loadEmployeeList();
                     }
                 }
@@ -363,8 +351,7 @@
 
         function toggleChatBox() {
             const chatBox = document.getElementById("chat-box");
-            const userList = document.getElementById("user-list");
-            const employeeList = document.getElementById("employee-list");
+            const contactList = document.getElementById("contact-list");
 
             if (!userId || !userRole) {
                 displayError("Vui lòng đăng nhập để sử dụng chat.");
@@ -374,27 +361,33 @@
 
             if (userRole === "User") {
                 chatBox.style.display = chatBox.style.display === "none" ? "flex" : "none";
-                userList.style.display = "none";
-                employeeList.style.display = "none";
+                contactList.style.display = "none";
                 if (!isChatInitialized) {
                     startChat();
-                }
-                else {
+                } else {
                     loadMessages();
                 }
             } else if (userRole === "Employee") {
-                userList.style.display = userList.style.display === "none" ? "block" : "none";
+                contactList.style.display = contactList.style.display === "none" ? "block" : "none";
                 chatBox.style.display = "none";
-                employeeList.style.display = "none";
-                if (userList.style.display === "block") {
+                if (contactList.style.display === "block") {
+                    document.getElementById("contact-list-tabs").innerHTML = `
+                        <div class="list-tab active" onclick="showTab('users')">Người dùng</div>
+                        <div class="list-tab" onclick="showTab('admins')">Quản trị viên</div>
+                    `;
+                    showTab("users");
                     unreadCount = 0;
                     updateUnreadCount();
                 }
             } else if (userRole === "Admin") {
-                employeeList.style.display = employeeList.style.display === "none" ? "block" : "none";
+                contactList.style.display = contactList.style.display === "none" ? "block" : "none";
                 chatBox.style.display = "none";
-                userList.style.display = "none";
-                if (employeeList.style.display === "block") {
+                if (contactList.style.display === "block") {
+                    document.getElementById("contact-list-tabs").innerHTML = `
+                        <div class="list-tab active" onclick="showTab('users')">Người dùng</div>
+                        <div class="list-tab" onclick="showTab('employees')">Nhân viên</div>
+                    `;
+                    showTab("users");
                     unreadCount = 0;
                     updateUnreadCount();
                 }
@@ -402,21 +395,40 @@
         }
 
         function showTab(tab) {
-            const userTab = document.querySelector('.list-tab:nth-child(1)');
-            const adminTab = document.querySelector('.list-tab:nth-child(2)');
-            const userListContent = document.getElementById("user-list-content");
-            const adminListContent = document.getElementById("admin-list-content");
+            const usersTab = document.querySelector('#contact-list-tabs .list-tab:nth-child(1)');
+            const secondTab = document.querySelector('#contact-list-tabs .list-tab:nth-child(2)');
+            const usersListContent = document.getElementById("users-list-content");
+            const adminsListContent = document.getElementById("admins-list-content");
+            const employeesListContent = document.getElementById("employees-list-content");
 
-            if (tab === "users") {
-                userTab.classList.add("active");
-                adminTab.classList.remove("active");
-                userListContent.classList.add("active");
-                adminListContent.classList.remove("active");
-            } else {
-                userTab.classList.remove("active");
-                adminTab.classList.add("active");
-                userListContent.classList.remove("active");
-                adminListContent.classList.add("active");
+            if (userRole === "Employee") {
+                if (tab === "users") {
+                    usersTab.classList.add("active");
+                    secondTab.classList.remove("active");
+                    usersListContent.style.display = "block";
+                    adminsListContent.style.display = "none";
+                    employeesListContent.style.display = "none";
+                } else if (tab === "admins") {
+                    usersTab.classList.remove("active");
+                    secondTab.classList.add("active");
+                    usersListContent.style.display = "none";
+                    adminsListContent.style.display = "block";
+                    employeesListContent.style.display = "none";
+                }
+            } else if (userRole === "Admin") {
+                if (tab === "users") {
+                    usersTab.classList.add("active");
+                    secondTab.classList.remove("active");
+                    usersListContent.style.display = "block";
+                    adminsListContent.style.display = "none";
+                    employeesListContent.style.display = "none";
+                } else if (tab === "employees") {
+                    usersTab.classList.remove("active");
+                    secondTab.classList.add("active");
+                    usersListContent.style.display = "none";
+                    adminsListContent.style.display = "none";
+                    employeesListContent.style.display = "block";
+                }
             }
         }
 
@@ -480,12 +492,12 @@
                     const messagesDiv = document.getElementById("chat-messages");
                     messagesDiv.innerHTML = "";
                     data.messages.forEach(msg => {
-                        if (userRole === "User" && (msg.senderRole === "User" || msg.senderRole === "Employee")) {
-                            const messageClass = msg.senderId === userId ? "user-message" : "employee-message";
+                        if (userRole === "User" && (msg.senderRole === "User" || msg.senderRole === "Employee" || msg.senderRole === "Admin" || msg.senderRole === "System")) {
+                            const messageClass = msg.senderId === userId ? "user-message" : (msg.senderRole === "Employee" ? "employee-message" : (msg.senderRole === "Admin" ? "admin-message" : "system-message"));
                             messagesDiv.innerHTML += `<div class="message ${messageClass}"><strong>${msg.senderId} (${msg.senderRole}):</strong> ${msg.message}</div>`;
                         } else if (userRole !== "User") {
                             const messageClass = msg.senderId === userId ? "user-message" :
-                                (msg.senderRole === "Employee" ? "employee-message" : "admin-message");
+                                (msg.senderRole === "Employee" ? "employee-message" : (msg.senderRole === "Admin" ? "admin-message" : "system-message"));
                             messagesDiv.innerHTML += `<div class="message ${messageClass}"><strong>${msg.senderId} (${msg.senderRole}):</strong> ${msg.message}</div>`;
                         }
                     });
@@ -507,7 +519,6 @@
             }
             try {
                 console.log(`Sending message with chatId: ${chatId}, userId: ${userId}, role: ${userRole}, message: ${message}`);
-                // Không hiển thị tin nhắn ngay tại đây, để ReceiveMessage xử lý
                 await connection.invoke("SendMessage", chatId.toString(), userId, userRole, message);
                 input.value = "";
             } catch (err) {
@@ -521,9 +532,9 @@
                 const response = await fetch("/Chat/GetUsers");
                 const data = await response.json();
                 if (data && Array.isArray(data)) {
-                    const userListContent = document.getElementById("user-list-content");
+                    const userListContent = document.getElementById("users-list-content");
                     userListContent.innerHTML = data.map(user =>
-                        `<div class="user-list-item" onclick="openChat('${user.id}', '${user.name}', 'User')">${user.name}</div>`
+                        `<div class="contact-list-item" onclick="openChat('${user.id}', '${user.name}', 'User')">${user.name}</div>`
                     ).join("");
                 }
             } catch (err) {
@@ -536,13 +547,13 @@
                 const response = await fetch("/Chat/GetAdmins");
                 const data = await response.json();
                 if (data && Array.isArray(data)) {
-                    const adminListContent = document.getElementById("admin-list-content");
+                    const adminListContent = document.getElementById("admins-list-content");
                     adminListContent.innerHTML = data.map(admin =>
-                        `<div class="admin-list-item" onclick="openChat('${admin.id}', '${admin.name}', 'Admin')">${admin.name}</div>`
+                        `<div class="contact-list-item" onclick="openChat('${admin.id}', '${admin.name}', 'Admin')">${admin.name}</div>`
                     ).join("");
                 }
             } catch (err) {
-                console.error("Lỗi tải danh sách admin:", err);
+                console.error("Lỗi tải danh sách quản trị viên:", err);
             }
         }
 
@@ -551,11 +562,10 @@
                 const response = await fetch("/Chat/GetEmployees");
                 const data = await response.json();
                 if (data && Array.isArray(data)) {
-                    const employeeList = document.getElementById("employee-list");
-                    employeeList.innerHTML = '<div class="list-header" id="employee-list-header">Danh sách nhân viên</div>' +
-                        data.map(emp =>
-                            `<div class="employee-list-item" onclick="openChat('${emp.id}', '${emp.name}', 'Employee')">${emp.name}</div>`
-                        ).join("");
+                    const employeeListContent = document.getElementById("employees-list-content");
+                    employeeListContent.innerHTML = data.map(emp =>
+                        `<div class="contact-list-item" onclick="openChat('${emp.id}', '${emp.name}', 'Employee')">${emp.name}</div>`
+                    ).join("");
                 }
             } catch (err) {
                 console.error("Lỗi tải danh sách nhân viên:", err);
@@ -564,12 +574,10 @@
 
         function openChat(targetId, targetName, targetRole) {
             const chatBox = document.getElementById("chat-box");
-            const userList = document.getElementById("user-list");
-            const employeeList = document.getElementById("employee-list");
+            const contactList = document.getElementById("contact-list");
 
             chatBox.style.display = "flex";
-            userList.style.display = "none";
-            employeeList.style.display = "none";
+            contactList.style.display = "none";
             startChat(targetId, targetName, targetRole);
         }
 
@@ -613,7 +621,7 @@
                 });
                 const data = await response.json();
                 if (data.success) {
-                    await connection.invoke("LeaveChat", chatId.toString(), data.userId, data.userRole);
+                    await connection.invoke("LeaveChat", chatId.toString(), userId, userRole);
                 }
             } catch (err) {
                 displayError("Không thể kết thúc chat: " + err.message);
