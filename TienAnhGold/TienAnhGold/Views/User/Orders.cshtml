@@ -1,0 +1,129 @@
+﻿@model List<TienAnhGold.Models.Order>
+
+@{
+    ViewData["Title"] = "Đơn hàng của bạn";
+    Layout = "_Layout";
+}
+
+<header class="bg-light py-4 mb-5">
+    <h1 class="text-center fw-bold text-gold">@ViewData["Title"]</h1>
+</header>
+
+<div class="container">
+    @if (TempData["OrderNotification"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["OrderNotification"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (Model == null || !Model.Any())
+    {
+        <p class="text-center text-muted py-5">Bạn chưa có đơn hàng nào.</p>
+    }
+    else
+    {
+        <table class="table table-hover shadow-lg rounded-4" id="ordersTable">
+            <thead class="table-light">
+                <tr>
+                    <th class="fw-bold text-dark">Mã đơn hàng</th>
+                    <th class="fw-bold text-dark">Phương thức thanh toán</th>
+                    <th class="fw-bold text-dark">Ngày đặt</th>
+                    <th class="fw-bold text-dark">Tổng tiền</th>
+                    <th class="fw-bold text-dark">Trạng thái</th>
+                    <th class="fw-bold text-dark">Hành động</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var order in Model)
+                {
+                    <tr data-order-id="@order.Id" class="@(order.Status == OrderStatus.Deleted ? "deleted-order" : "")">
+                        <td class="text-muted">@order.Id</td>
+                        <td class="text-muted">@(order.PaymentMethod == "COD" ? "Thanh toán khi nhận hàng" : "Chuyển khoản qua STK")</td>
+                        <td class="text-muted">@order.OrderDate.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td class="text-muted">@order.TotalAmount?.ToString("N0") VND</td>
+                        <td class="text-muted">
+                            @switch (order.Status)
+                            {
+                                case OrderStatus.Pending:
+                                    <span class="badge bg-warning status-text">Chờ duyệt</span>
+                                    break;
+                                case OrderStatus.Approved:
+                                    <span class="badge bg-info status-text">Đã duyệt</span>
+                                    break;
+                                case OrderStatus.AwaitingConfirmation:
+                                    <span class="badge bg-primary status-text">Chờ xác nhận thanh toán</span>
+                                    break;
+                                case OrderStatus.Completed:
+                                    <span class="badge bg-success status-text">Hoàn thành</span>
+                                    break;
+                                case OrderStatus.Deleted:
+                                    <span class="badge bg-danger status-text">Đơn hàng đã bị xóa</span>
+                                    break;
+                                default:
+                                    <span class="badge bg-secondary status-text">Không xác định</span>
+                                    break;
+                            }
+                        </td>
+                        <td>
+                            <a asp-action="OrderDetails" asp-controller="User" asp-route-id="@order.Id" class="btn btn-gold btn-sm py-1 px-3">Xem chi tiết</a>
+                            @if (order.Status == OrderStatus.Deleted)
+                            {
+                                <form asp-action="DeleteOrder" asp-controller="User" method="post" style="display:inline;">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@order.Id" />
+                                    <button type="submit" class="btn btn-danger btn-sm py-1 px-3">Xóa vĩnh viễn</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<style>
+    :root {
+        --gold-color: #d4a017;
+        --gold-hover: #b88a017;
+    }
+
+    .text-gold {
+        color: var(--gold-color) !important;
+    }
+
+    .badge {
+        padding: 5px 10px;
+        border-radius: 5px;
+    }
+
+    .btn-gold {
+        background-color: var(--gold-color);
+        color: #ffffff;
+        transition: background-color 0.3s ease;
+    }
+
+        .btn-gold:hover {
+            background-color: var(--gold-hover);
+        }
+
+    .table {
+        background-color: #ffffff;
+        border-radius: 16px;
+        overflow: hidden;
+    }
+
+    .table-light {
+        background-color: #f8f9fa;
+    }
+
+    .text-muted {
+        color: #6c757d;
+    }
+
+    .deleted-order {
+        opacity: 0.5;
+    }
+</style>
